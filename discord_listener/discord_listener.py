@@ -35,8 +35,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import yaml
 from discord_scraper import (
-    TOKEN, API_BASE, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_DELAY,
-    make_request, create_client_session, get_headers, parse_channel_id
+    API_BASE, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_DELAY,
+    make_request, create_client_session, parse_channel_id
 )
 
 # 配置日志
@@ -51,10 +51,10 @@ class DiscordMonitor:
         self.config = self.load_config(config_path)
         self.setup_logging()
 
-        # 获取令牌
-        self.token = self.config.get('discord_token') or TOKEN
+        # 获取令牌（仅使用配置文件）
+        self.token = self.config.get('discord_token')
         if not self.token:
-            logger.error("未找到 Discord 令牌。请在 config.yaml 中设置或设置 DISCORD_TOKEN 环境变量。")
+            logger.error("未找到 Discord 令牌。请在 config.yaml 中设置 discord_token。")
             raise ValueError("Discord 令牌未设置")
 
         # 频道配置
@@ -166,8 +166,12 @@ class DiscordMonitor:
 
     async def make_request_with_proxy(self, url: str, params: Dict = None) -> tuple:
         """发送请求，支持代理和重试"""
-        # 获取包含 Authorization 的请求头
-        headers = await get_headers()
+        # 使用配置文件中的 token 构建请求头
+        headers = {
+            'Authorization': self.token,
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
 
         kwargs = {
             'params': params,
