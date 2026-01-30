@@ -1,1 +1,11 @@
 .env
+.venv
+.idea
+*.log
+__pycache__/
+*.pyc
+*.pyo
+*.bin
+*.dist/
+config.local.yaml
+*.local.*

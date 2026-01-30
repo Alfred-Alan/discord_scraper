@@ -1,0 +1,79 @@
+# Discord 频道消息监控配置
+
+# Discord 用户令牌
+# 获取方法：
+# 1. 在浏览器中打开 Discord 并登录
+# 2. 按 F12 打开开发者工具
+# 3. 切换到 Network 标签
+# 4. 刷新页面，找到任意请求，查看请求头中的 "Authorization"
+# 5. 复制该值（注意：不要包含引号）
+discord_token: ""
+
+# 监控的频道配置
+# 可以是单个频道ID，也可以是多个频道ID列表
+channels:
+  # 格式1: 仅频道ID（需要从频道信息中自动获取服务器ID）
+  # - channel_id: "1234567890123456789"
+  #   name: "general"  # 可选，用于显示
+
+  # 格式2: 服务器ID/频道ID 组合（推荐，可以获取角色信息）
+  # - guild_id: "9876543210987654321"
+  #   channel_id: "1234567890123456789"
+  #   name: "announcements"  # 可选，用于显示
+
+  - guild_id: ""
+    channel_id: ""
+    name: "默认频道"
+
+# 监控间隔（秒）
+# 建议值：300 秒，过短可能触发速率限制
+interval: 300
+
+# 每次获取的最大消息数
+limit: 100
+
+# 显示设置
+display:
+  # 是否显示时间戳
+  show_timestamp: true
+  # 时区设置（IANA 时区名称，如 Asia/Shanghai、America/New_York）
+  # 留空或省略则使用 UTC
+  timezone: "Asia/Shanghai"
+  # 时间戳格式
+  timestamp_format: "%H:%M:%S"
+  # 是否显示用户ID
+  show_user_id: false
+  # 是否显示附件信息
+  show_attachments: true
+  # 是否显示表情反应
+  show_reactions: true
+
+# 日志设置
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  # 是否保存日志到文件
+  save_to_file: false
+  # 日志文件路径（仅在 save_to_file 为 true 时有效）
+  log_file: "discord_monitor.log"
+
+# 代理设置（支持 Clash 等 HTTP/HTTPS 代理）
+proxy:
+  # 是否启用代理
+  enabled: false
+  # 代理地址（Clash 默认 http://127.0.0.1:7890）
+  # 格式: http://host:port 或 https://host:port
+  # 如果 Clash 使用 SOCKS5，格式为: socks5://host:port
+  url: "http://127.0.0.1:7890"
+
+# 高级设置
+advanced:
+  # 最大重试次数
+  max_retries: 3
+  # 请求超时时间（秒）
+  timeout: 30
+  # 连接池大小
+  connection_pool_size: 10
+  # 分页请求间隔（秒）- 单次定时任务内连续分页的间隔
+  # 建议值：1.0-2.0，过小可能触发 429 速率限制
+  page_delay: 1.5

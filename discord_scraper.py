@@ -590,7 +590,8 @@ def format_message_to_markdown(message: Dict, guild_roles: List[Dict] = None) ->
     formatted_time = timestamp.strftime('%Y-%m-%d %H:%M:%S')
 
     # 获取作者信息
-    author_name = message['author']['username']
+    # author_name = f"{message['author']['global_name']} ({message['author']['username']})"
+    author_name = f"{message['author']['global_name']}"
 
     # 处理用户角色信息
     user_roles = []
