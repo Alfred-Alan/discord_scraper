@@ -20,15 +20,12 @@ import aiohttp
 import argparse
 import logging
 import requests
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Dict, Optional, Any
 from pathlib import Path
 
-# 时区库兼容性处理
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    from backports.zoneinfo import ZoneInfo
+# 时区处理 - 使用 dateutil (支持跨平台，无需 tzdata)
+from dateutil import tz
 
 # 添加父目录到路径以复用代码
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -77,12 +74,14 @@ class DiscordMonitor:
         timezone_str = self.display_config.get('timezone')
         if timezone_str:
             try:
-                self.timezone = ZoneInfo(timezone_str)
+                self.timezone = tz.gettz(timezone_str)
+                if self.timezone is None:
+                    raise ValueError(f"无法识别的时区: {timezone_str}")
             except Exception:
                 logger.warning(f"无效的时区设置: {timezone_str}，使用 UTC")
-                self.timezone = timezone.utc
+                self.timezone = tz.UTC
         else:
-            self.timezone = timezone.utc
+            self.timezone = tz.UTC
 
         # 高级设置
         self.advanced_config = self.config.get('advanced', {})
