@@ -13,6 +13,18 @@ discord_token: ""
 # 获取方法：在企业微信群中添加机器人，复制 webhook 地址
 wecom_webhook: ""
 
+# 调度配置（cron 表达式）
+# 格式: 分 时 日 月 周
+# 示例:
+#   "*/5 * * * *"    每5分钟
+#   "0 * * * *"      每小时整点
+#   "0 */6 * * *"    每6小时
+cron: "*/5 * * * *"
+
+# 状态文件
+# 用于保存最后读取的消息ID，重启后从该位置继续
+state_file: ".discord_listener_state.json"
+
 # 监控的频道配置
 channels:
   # 示例配置1：监听特定用户
@@ -35,10 +47,6 @@ channels:
     channel_id: ""
     name: "默认频道"
     watch_users: []
-
-# 监控间隔（秒）
-# 建议值：300 秒，过短可能触发速率限制
-interval: 300
 
 # 每次获取的最大消息数
 limit: 100

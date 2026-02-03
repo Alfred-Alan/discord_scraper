@@ -12,11 +12,9 @@ Discord 频道消息实时监控工具
 """
 
 import os
-import sys
 import json
 import asyncio
 
-import aiohttp
 import argparse
 import logging
 from datetime import datetime
@@ -26,21 +24,19 @@ from pathlib import Path
 # 时区处理 - 使用 dateutil (支持跨平台，无需 tzdata)
 from dateutil import tz
 
-# 添加父目录到路径以复用代码
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import yaml
-from discord_scraper import (
+from common import (
     API_BASE, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_DELAY,
-    make_request, create_client_session, parse_channel_id
+    get_headers, make_request, create_client_session, parse_channel_id
 )
+from pkg.scheduler import CronJobScheduler
 
 # 配置日志
 logger = logging.getLogger('discord_monitor')
 
 
 class DiscordMonitor:
-    """Discord 消息监控器"""
+    """Discord 消息监控器 - 基于 Cron 调度器"""
 
     def __init__(self, config_path: str = "config.yaml"):
         """初始化监控器"""
@@ -59,8 +55,10 @@ class DiscordMonitor:
             logger.error("请在 config.yaml 中配置要监控的频道")
             raise ValueError("未配置监控频道")
 
+        # Cron 表达式（从配置文件读取）
+        self.cron_expr = self._get_cron_expr()
+
         # 监控设置
-        self.interval = self.config.get('interval', 10)
         self.limit = self.config.get('limit', 50)
 
         # 显示设置
@@ -92,8 +90,60 @@ class DiscordMonitor:
         # 状态跟踪：记录每个频道最后一条消息的ID
         self.last_message_ids = {}
 
+        # 状态文件路径
+        self.state_file = self.config.get('state_file', '.discord_monitor_state.json')
+        self.load_state()
+
         # 会话
         self.session = None
+
+        # 调度器（用于定时任务模式）
+        self.scheduler: Optional[CronJobScheduler] = None
+
+    def _get_cron_expr(self) -> str:
+        """
+        获取 cron 表达式
+
+        从配置文件中读取，如果没有设置则使用默认值
+
+        Returns:
+            cron 表达式
+        """
+        # 从配置文件中读取
+        config_cron = self.config.get('cron')
+        if config_cron:
+            logger.info(f"Using cron from config: {config_cron}")
+            return config_cron
+
+        # 默认每5分钟
+        default_cron = "*/5 * * * *"
+        logger.warning(f"No cron configured, using default: {default_cron}")
+        return default_cron
+
+    def load_state(self):
+        """从文件加载状态"""
+        try:
+            if os.path.exists(self.state_file):
+                with open(self.state_file, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                    self.last_message_ids = state.get('last_message_ids', {})
+                    logger.info(f"State loaded from {self.state_file}")
+        except Exception as e:
+            logger.warning(f"Failed to load state: {e}")
+            self.last_message_ids = {}
+
+    def save_state(self):
+        """保存状态到文件"""
+        try:
+            state = {
+                'last_message_ids': self.last_message_ids,
+                'saved_at': datetime.now().isoformat()
+            }
+            with open(self.state_file, 'w', encoding='utf-8') as f:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+            logger.debug(f"State saved to {self.state_file}")
+        except Exception as e:
+            logger.error(f"Failed to save state: {e}")
 
     def load_config(self, config_path: str) -> Dict:
         """加载配置文件"""
@@ -123,36 +173,14 @@ class DiscordMonitor:
 
     async def initialize(self):
         """初始化会话（支持代理）"""
-        # 配置连接池
-        conn = aiohttp.TCPConnector(
-            limit=self.advanced_config.get('connection_pool_size', 10),
-            ttl_dns_cache=300,
-            ssl=False,
-            force_close=False
+        self.session = await create_client_session(
+            connection_pool_size=self.advanced_config.get('connection_pool_size', 10),
+            timeout=self.advanced_config.get('timeout', 60)
         )
 
-        # 配置超时
-        timeout = aiohttp.ClientTimeout(
-            total=self.advanced_config.get('timeout', 60),
-            connect=10,
-            sock_connect=10,
-            sock_read=30
-        )
-
-        # 创建会话
-        self.session = aiohttp.ClientSession(
-            connector=conn,
-            timeout=timeout,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        )
-
-        # 如果有代理，设置代理
+        # 如果有代理，记录日志
         if self.proxy_url:
             logger.info(f"使用代理: {self.proxy_url}")
-            # aiohttp 需要在请求时传入 proxy 参数，这里我们先记录
-            self.session._default_proxy = self.proxy_url
 
     async def close(self):
         """关闭会话"""
@@ -162,51 +190,17 @@ class DiscordMonitor:
     async def make_request_with_proxy(self, url: str, params: Dict = None) -> tuple:
         """发送请求，支持代理和重试"""
         # 使用配置文件中的 token 构建请求头
-        headers = {
-            'Authorization': self.token,
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        headers = get_headers(self.token)
 
-        kwargs = {
-            'params': params,
-            'headers': headers  # 添加认证头
-        }
-        if self.proxy_url:
-            kwargs['proxy'] = self.proxy_url
-
-        retries = 0
-        last_error = None
-
-        while retries <= self.max_retries:
-            try:
-                async with self.session.get(url, **kwargs) as response:
-                    if response.status == 429:  # 速率限制
-                        retry_after = int(response.headers.get('Retry-After', DEFAULT_RETRY_DELAY))
-                        logger.warning(f"速率限制，等待 {retry_after} 秒后重试...")
-                        await asyncio.sleep(retry_after)
-                        retries += 1
-                        continue
-                    elif response.status >= 500:  # 服务器错误
-                        logger.warning(f"服务器错误 ({response.status})，重试中...")
-                        await asyncio.sleep(DEFAULT_RETRY_DELAY * (retries + 1))
-                        retries += 1
-                        continue
-
-                    content = await response.read()
-                    return response, content
-
-            except Exception as e:
-                logger.warning(f"请求失败: {str(e)}，重试中...")
-                await asyncio.sleep(DEFAULT_RETRY_DELAY * (retries + 1))
-                retries += 1
-                last_error = e
-                continue
-
-        if last_error:
-            raise Exception(f"请求失败，已达到最大重试次数 ({self.max_retries}): {str(last_error)}")
-        else:
-            raise Exception(f"请求失败，已达到最大重试次数 ({self.max_retries})")
+        return await make_request(
+            self.session,
+            url,
+            method="GET",
+            headers=headers,
+            params=params,
+            max_retries=self.max_retries,
+            proxy=self.proxy_url
+        )
 
     async def fetch_new_messages(self, channel_id: str, after_message_id: Optional[str] = None) -> List[Dict]:
         """
@@ -313,7 +307,7 @@ class DiscordMonitor:
         print("       Discord 频道消息实时监控")
         print("=" * 60)
         print(f"监控频道数: {len(self.channels)}")
-        print(f"监控间隔: {self.interval} 秒")
+        print(f"调度周期: {self.cron_expr}")
         print(f"单次请求: {self.limit} 条 (自动分页直到追平最新)")
         print("-" * 60)
         print("开始监控... (按 Ctrl+C 停止)\n")
@@ -382,45 +376,83 @@ class DiscordMonitor:
             self.last_message_ids[channel_id] = last_id
             logger.debug(f"频道 [{name}] 本轮共获取 {total_fetched} 条消息")
 
-    async def run(self):
-        """运行监控循环"""
-        await self.initialize()
-        self.print_banner()
+    async def tick(self):
+        """
+        单次执行监控任务
+
+        被调度器定时调用，执行一次消息检查
+        """
+        if not self.session:
+            await self.initialize()
 
         try:
-            while True:
-                tasks = [
-                    self.monitor_channel(ch_config)
-                    for ch_config in self.channels
-                ]
-                await asyncio.gather(*tasks, return_exceptions=True)
+            tasks = [
+                self.monitor_channel(ch_config)
+                for ch_config in self.channels
+            ]
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-                await asyncio.sleep(self.interval)
+            # 保存状态
+            self.save_state()
 
-        except asyncio.CancelledError:
-            logger.info("监控任务被取消")
+        except Exception as e:
+            logger.error(f"Tick error: {e}")
+
+    async def start(self):
+        """启动监控器（调度器模式）"""
+        self.print_banner()
+        logger.info(f"调度器模式，cron: {self.cron_expr}")
+
+        # 创建调度器
+        self.scheduler = CronJobScheduler()
+
+        # 添加定时任务 - 调用自身的 tick 方法
+        await self.scheduler.add_job(
+            job_id="discord_monitor_tick",
+            cron_expr=self.cron_expr,
+            func=self.tick
+        )
+
+        # 启动调度器
+        await self.scheduler.start()
+        logger.info("调度器已启动，按 Ctrl+C 停止")
+
+        try:
+            # 保持运行
+            await self.scheduler.wait()
+        except KeyboardInterrupt:
+            logger.info("正在停止...")
         finally:
-            await self.close()
+            await self.stop()
+
+    async def stop(self):
+        """停止监控器"""
+        if self.scheduler:
+            await self.scheduler.stop()
+            self.scheduler = None
+        await self.close()
+        logger.info("监控器已停止")
 
 
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
-        description="Discord 频道消息实时监控",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="Discord 频道消息实时监控（调度器模式）",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python discord_monitor.py                  # 使用配置文件设置
+  python discord_monitor.py -c config.yaml   # 指定配置文件
+
+配置文件示例:
+  cron: "*/5 * * * *"        # 直接指定cron表达式
+        """
     )
 
     parser.add_argument(
         "-c", "--config",
         help="配置文件路径",
         default="config.yaml"
-    )
-
-    parser.add_argument(
-        "-i", "--interval",
-        type=int,
-        help="监控间隔（秒）",
-        default=None
     )
 
     parser.add_argument(
@@ -431,18 +463,16 @@ def main():
 
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # 设置日志级别
+    level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 
     try:
         monitor = DiscordMonitor(args.config)
-
-        # 命令行参数覆盖配置文件
-        if args.interval:
-            monitor.interval = args.interval
-
-        asyncio.run(monitor.run())
-
+        asyncio.run(monitor.start())
     except KeyboardInterrupt:
         print("\n\n监控已停止")
     except Exception as e:
