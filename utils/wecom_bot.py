@@ -46,3 +46,24 @@ def send_md(webhook, content):
     }
     data = json.dumps(data)
     return requests.post(url=webhook, data=data, headers=header)
+
+
+def send_md_v2(webhook, content):
+    """Send markdown_v2 message to WeCom bot.
+
+    Args:
+        webhook: WeCom bot webhook URL
+        content: Markdown v2 content (supports tables, better formatting)
+    """
+    header = {
+        "Content-Type": "application/json",
+        "Charset": "UTF-8"
+    }
+    data = {
+        "msgtype": "markdown_v2",
+        "markdown_v2": {
+            "content": content
+        }
+    }
+    data = json.dumps(data)
+    return requests.post(url=webhook, data=data, headers=header)
