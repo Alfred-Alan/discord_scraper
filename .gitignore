@@ -8,4 +8,4 @@ __pycache__/
 *.bin
 *.dist/
 config.local.yaml
-*.local.*
+*.local.**.state.json

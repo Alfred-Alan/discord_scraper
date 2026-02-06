@@ -33,8 +33,10 @@ from typing import List, Dict, Optional, Any
 from pathlib import Path
 from utils.wecom_bot import send_text
 
-# 时区处理 - 使用 dateutil (支持跨平台，无需 tzdata)
-from dateutil import tz
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 import yaml
 from common import (
@@ -42,6 +44,7 @@ from common import (
     get_headers, make_request, create_client_session, parse_channel_id
 )
 from utils.wecom_bot import send_md_v2
+from utils.discord_bot import DiscordBotSender
 from pkg.scheduler import CronJobScheduler
 
 # 配置日志
@@ -79,6 +82,18 @@ class DiscordWatcher:
         # 新增：通知配置
         self.wecom_webhook = self.config.get('wecom_webhook', '')
 
+        # 新增：Discord Bot 配置
+        discord_bot_config = self.config.get('discord_bot', {})
+        self.discord_bot_enabled = discord_bot_config.get('enabled', False)
+        self.discord_bot_token = discord_bot_config.get('token', '')
+        self.discord_bot_channel_id = discord_bot_config.get('channel_id', '')
+        self.discord_bot_sender: Optional[DiscordBotSender] = None
+        if self.discord_bot_enabled and self.discord_bot_token and self.discord_bot_channel_id:
+            self.discord_bot_sender = DiscordBotSender(self.discord_bot_token, self.discord_bot_channel_id)
+            logger.info("Discord Bot 推送已启用")
+        else:
+            logger.info("Discord Bot 推送未启用（配置不完整或已禁用）")
+
         # 监控设置
         self.limit = self.config.get('limit', 50)
 
@@ -89,14 +104,12 @@ class DiscordWatcher:
         timezone_str = self.display_config.get('timezone')
         if timezone_str:
             try:
-                self.timezone = tz.gettz(timezone_str)
-                if self.timezone is None:
-                    raise ValueError(f"无法识别的时区: {timezone_str}")
+                self.timezone = ZoneInfo(timezone_str)
             except Exception:
                 logger.warning(f"无效的时区设置: {timezone_str}，使用 UTC")
-                self.timezone = tz.UTC
+                self.timezone = ZoneInfo("UTC")
         else:
-            self.timezone = tz.UTC
+            self.timezone = ZoneInfo("UTC")
 
         # 高级设置
         self.advanced_config = self.config.get('advanced', {})
@@ -414,6 +427,7 @@ class DiscordWatcher:
         print("=" * 60)
         print(f"监控频道数: {len(self.channels)}")
         print(f"企业微信推送: {'已开启' if self.wecom_webhook else '未配置'}")
+        print(f"Discord Bot推送: {'已开启' if self.discord_bot_sender and self.discord_bot_sender.enabled else '未配置'}")
         print(f"调度周期: {self.cron_expr}")
         print(f"单次请求: {self.limit} 条 (自动分页直到追平最新)")
         print(f"上下文消息数: {self.context_count} 条 (目标用户前后各{self.context_count}条)")
@@ -505,6 +519,10 @@ class DiscordWatcher:
                             # 企业微信通知所有消息
                             if self.wecom_webhook:
                                 await self.send_wecom("", message_obj=msg, channel_name=name, is_target=is_target)
+
+                            # Discord Bot 通知所有消息
+                            if self.discord_bot_sender:
+                                await self.discord_bot_sender.send_message("", message_obj=msg, channel_name=name, is_target=is_target)
             else:
                 # 没有配置监听用户，输出所有消息
                 for msg in messages:
@@ -513,6 +531,10 @@ class DiscordWatcher:
 
                     if self.wecom_webhook:
                         await self.send_wecom("", message_obj=msg, channel_name=name, is_target=False)
+
+                    # Discord Bot 通知所有消息
+                    if self.discord_bot_sender:
+                        await self.discord_bot_sender.send_message("", message_obj=msg, channel_name=name, is_target=False)
 
             total_fetched += len(messages)
             # 更新最后消息ID为这批消息的最后一条

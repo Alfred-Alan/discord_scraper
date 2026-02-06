@@ -23,8 +23,10 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 from pathlib import Path
 
-# 时区处理 - 使用 dateutil (支持跨平台，无需 tzdata)
-from dateutil import tz
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 import yaml
 from common import (
@@ -73,14 +75,12 @@ class DiscordMonitor:
         timezone_str = self.display_config.get('timezone')
         if timezone_str:
             try:
-                self.timezone = tz.gettz(timezone_str)
-                if self.timezone is None:
-                    raise ValueError(f"无法识别的时区: {timezone_str}")
+                self.timezone = ZoneInfo(timezone_str)
             except Exception:
                 logger.warning(f"无效的时区设置: {timezone_str}，使用 UTC")
-                self.timezone = tz.UTC
+                self.timezone = ZoneInfo("UTC")
         else:
-            self.timezone = tz.UTC
+            self.timezone = ZoneInfo("UTC")
 
         # 高级设置
         self.advanced_config = self.config.get('advanced', {})

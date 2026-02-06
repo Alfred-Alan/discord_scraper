@@ -38,6 +38,26 @@ state_file: ".discord_watcher_state.json"
 wecom_webhook: ""
 
 # ============================================
+# Discord Bot 推送（可选）
+# 用于将消息转发到另一个 Discord 频道
+# ============================================
+discord_bot:
+  # 是否启用 Discord Bot 推送
+  enabled: false
+  # Discord Bot Token（从 Discord Developer Portal 获取）
+  # 获取方法：
+  # 1. 访问 https://discord.com/developers/applications
+  # 2. 创建 New Application -> Bot
+  # 3. 复制 Token（注意：Token 只能查看一次，请妥善保存）
+  # 4. 将 Bot 邀请到目标频道（需要 Send Messages 权限）
+  token: ""
+  # 目标频道 ID（消息将发送到这个频道）
+  channel_id: ""
+  # 速率限制配置（Discord 限制 5条/5秒）
+  rate_limit: 5        # 每个时间窗口最多发送消息数
+  rate_window: 5       # 时间窗口（秒）
+
+# ============================================
 # 监听配置
 # ============================================
 

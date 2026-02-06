@@ -6,6 +6,7 @@
 
 - **实时监控**: 定时轮询获取新消息
 - **多频道支持**: 可同时监控多个频道
+- **Discord Bot 推送**: 支持将消息转发到另一个 Discord 频道
 - **防速率限制**: 内置重试机制和请求间隔控制
 - **聊天窗口样式**: `发送人: 消息内容` 格式显示
 - **增量获取**: 只获取上次之后的新消息
@@ -43,6 +44,12 @@ channels:
   - channel_id: "频道ID"
     name: "频道显示名称"
     # guild_id: "服务器ID"  # 可选，用于获取角色信息
+
+# Discord Bot 推送（可选）
+discord_bot:
+  enabled: true
+  token: "你的 Discord Bot Token"
+  channel_id: "目标频道ID"
 
 # 监控间隔（秒）
 interval: 10
@@ -112,6 +119,35 @@ proxy:
   url: "http://127.0.0.1:7890"  # Clash 默认地址
   # 格式: http://host:port 或 socks5://host:port
 ```
+
+### Discord Bot 推送配置
+
+```yaml
+discord_bot:
+  enabled: true                          # 是否启用
+  token: "YOUR_BOT_TOKEN"               # Bot Token
+  channel_id: "1234567890123456789"     # 目标频道 ID
+  rate_limit: 5                         # 速率限制：每个时间窗口最多发送消息数
+  rate_window: 5                        # 时间窗口（秒）
+```
+
+**获取 Bot Token：**
+1. 访问 [Discord Developer Portal](https://discord.com/developers/applications)
+2. 点击 "New Application" 创建应用
+3. 进入 "Bot" 页面，点击 "Add Bot"
+4. 复制 Token（注意：Token 只能查看一次，请妥善保存）
+5. 在 "Privileged Gateway Intents" 中启用必要权限
+
+**邀请 Bot 到频道：**
+1. 进入 "OAuth2" -> "URL Generator"
+2. 在 "Scopes" 中选择 `bot`
+3. 在 "Bot Permissions" 中选择：`Send Messages`, `Read Message History`
+4. 复制生成的 URL 并在浏览器中打开
+5. 选择目标服务器并授权
+
+**获取频道 ID：**
+1. 在 Discord 中开启开发者模式（设置 -> 高级 -> 开发者模式）
+2. 右键点击目标频道，选择 "复制频道 ID"
 
 ## 输出示例
 
