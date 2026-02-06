@@ -16,6 +16,15 @@ import sys
 import json
 import asyncio
 
+# 添加父目录到 Python 路径（支持 Windows 编译和直接运行）
+try:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+except Exception:
+    pass
+
 import argparse
 import logging
 import requests

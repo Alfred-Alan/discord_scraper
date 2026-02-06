@@ -12,8 +12,23 @@ Discord 频道消息实时监控工具
 """
 
 import os
+import sys
 import json
 import asyncio
+
+# 添加父目录到 Python 路径（支持 Windows 编译和直接运行）
+# 使用 __file__ 获取当前文件路径，兼容编译后的环境
+try:
+    # 获取当前文件所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 父目录就是项目根目录
+    parent_dir = os.path.dirname(current_dir)
+    # 添加到路径开头
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+except Exception:
+    # 如果 __file__ 不可用（某些编译环境），尝试其他方式
+    pass
 
 import argparse
 import logging
