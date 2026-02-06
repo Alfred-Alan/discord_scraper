@@ -316,15 +316,16 @@ class DiscordMonitor:
 
     def print_banner(self):
         """打印启动横幅"""
-        print("\n" + "=" * 60)
-        print("       Discord 频道消息实时监控")
-        print("=" * 60)
-        print(f"监控频道数: {len(self.channels)}")
-        print(f"Discord Bot推送: {'已开启' if self.discord_bot_sender and self.discord_bot_sender.enabled else '未配置'}")
-        print(f"调度周期: {self.cron_expr}")
-        print(f"单次请求: {self.limit} 条 (自动分页直到追平最新)")
-        print("-" * 60)
-        print("开始监控... (按 Ctrl+C 停止)\n")
+        banner = "\n" + "=" * 60 + "\n"
+        banner += "       Discord 频道消息实时监控\n"
+        banner += "=" * 60 + "\n"
+        banner += f"监控频道数: {len(self.channels)}\n"
+        banner += f"Discord Bot推送: {'已开启' if self.discord_bot_sender and self.discord_bot_sender.enabled else '未配置'}\n"
+        banner += f"调度周期: {self.cron_expr}\n"
+        banner += f"单次请求: {self.limit} 条 (自动分页直到追平最新)\n"
+        banner += "-" * 60 + "\n"
+        banner += "开始监控... (按 Ctrl+C 停止)\n"
+        logger.info(banner)
 
     async def monitor_channel(self, channel_config: Dict):
         """
@@ -365,7 +366,7 @@ class DiscordMonitor:
             # 显示消息
             for msg in messages:
                 formatted = self.format_message(msg, name)
-                print(formatted)
+                logger.info(formatted)
 
                 # Discord Bot 发送消息
                 if self.discord_bot_sender:
@@ -492,7 +493,7 @@ def main():
         monitor = DiscordMonitor(args.config)
         asyncio.run(monitor.start())
     except KeyboardInterrupt:
-        print("\n\n监控已停止")
+        logger.info("监控已停止")
     except Exception as e:
         logger.error(f"发生错误: {str(e)}")
         raise
